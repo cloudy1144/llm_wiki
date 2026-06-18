@@ -128,11 +128,11 @@ export function detectKnowledgeGaps(
     const topIsolated = isolatedNodes.slice(0, 5)
     gaps.push({
       type: "isolated-node",
-      title: `${isolatedNodes.length} isolated page${isolatedNodes.length > 1 ? "s" : ""}`,
+      title: `${isolatedNodes.length} 个孤立页面`,
       description: topIsolated.map((n) => n.label).join(", ") +
-        (isolatedNodes.length > 5 ? ` and ${isolatedNodes.length - 5} more` : ""),
+        (isolatedNodes.length > 5 ? ` 等${isolatedNodes.length - 5}个更多` : ""),
       nodeIds: isolatedNodes.map((n) => n.id),
-      suggestion: "These pages have few or no connections. Consider adding [[wikilinks]] to related pages, or research to expand their content.",
+      suggestion: "这些页面几乎没有或没有连接。考虑添加 [[wikilinks]] 到相关页面，或进行研究以扩展其内容。",
     })
   }
 
@@ -141,10 +141,10 @@ export function detectKnowledgeGaps(
     if (comm.cohesion < 0.15 && comm.nodeCount >= 3) {
       gaps.push({
         type: "sparse-community",
-        title: `Sparse cluster: ${comm.topNodes[0] ?? `Community ${comm.id}`}`,
-        description: `${comm.nodeCount} pages with cohesion ${comm.cohesion.toFixed(2)} — internal connections are weak.`,
+        title: `稀疏集群: ${comm.topNodes[0] ?? `社区 ${comm.id}`}`,
+        description: `${comm.nodeCount} 个页面，内聚度 ${comm.cohesion.toFixed(2)} — 内部连接较弱。`,
         nodeIds: nodes.filter((n) => n.community === comm.id).map((n) => n.id),
-        suggestion: `This knowledge area lacks internal cross-references. Consider adding links between these pages or researching to fill gaps.`,
+        suggestion: `该知识领域缺乏内部交叉引用。考虑在这些页面之间添加链接或研究以填补空白。`,
       })
     }
   }
@@ -182,10 +182,10 @@ export function detectKnowledgeGaps(
     const commCount = communityNeighbors.get(bridge.id)?.size ?? 0
     gaps.push({
       type: "bridge-node",
-      title: `Key bridge: ${bridge.label}`,
-      description: `Connects ${commCount} different knowledge clusters. This is a critical junction in your wiki.`,
+      title: `关键桥梁: ${bridge.label}`,
+      description: `连接 ${commCount} 个不同的知识集群。这是您 wiki 中的关键节点。`,
       nodeIds: [bridge.id],
-      suggestion: `This page bridges multiple knowledge areas. Ensure it's well-maintained — if it's thin, expanding it will strengthen your entire wiki.`,
+      suggestion: `此页面连接多个知识领域。确保其维护良好——如果内容单薄，扩展它将增强整个 wiki。`,
     })
   }
 

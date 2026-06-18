@@ -1,6 +1,7 @@
 import { readFile, writeFile } from "@/commands/fs"
 import { streamChat } from "./llm-client"
 import { useWikiStore, type LlmConfig } from "@/stores/wiki-store"
+import { resolveLightConfig } from "./has-usable-llm"
 import { buildLanguageDirective } from "./output-language"
 import { normalizePath } from "@/lib/path-utils"
 
@@ -27,6 +28,10 @@ export async function enrichWithWikilinks(
   filePath: string,
   llmConfig: LlmConfig,
 ): Promise<void> {
+  // Wikilink 丰富化是轻量任务，使用廉价模型降低成本
+  const lightLlmConfig = useWikiStore.getState().lightLlmConfig
+  const effectiveLlm = resolveLightConfig(lightLlmConfig) ?? llmConfig
+
   const pp = normalizePath(projectPath)
   const fp = normalizePath(filePath)
   const [content, index] = await Promise.all([
@@ -42,7 +47,7 @@ export async function enrichWithWikilinks(
   let raw = ""
 
   await streamChat(
-    llmConfig,
+    effectiveLlm,
     [
       {
         role: "system",

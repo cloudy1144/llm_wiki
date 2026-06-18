@@ -15,6 +15,8 @@ import {
   Server,
   Settings,
   FileText,
+  Zap,
+  CloudDownload,
 } from "lucide-react"
 import { useTranslation } from "react-i18next"
 import { invoke } from "@tauri-apps/api/core"
@@ -32,6 +34,7 @@ import { normalizeSourceWatchConfig } from "@/lib/source-watch-config"
 import { LlmProviderSection } from "./sections/llm-provider-section"
 import { EmbeddingSection } from "./sections/embedding-section"
 import { MultimodalSection } from "./sections/multimodal-section"
+import { LightLlmSection } from "./sections/light-llm-section"
 import { WebSearchSection } from "./sections/web-search-section"
 import { OutputSection } from "./sections/output-section"
 import { InterfaceSection } from "./sections/interface-section"
@@ -44,16 +47,19 @@ import { GeneralSection } from "./sections/general-section"
 import { ChangelogSection } from "./sections/changelog-section"
 import { MaintenanceSection } from "./sections/maintenance-section"
 import { AboutSection } from "./sections/about-section"
+import { FeishuImportSection } from "./sections/feishu-import-section"
 
 type CategoryId =
   | "general"
   | "llm"
   | "embedding"
   | "multimodal"
+  | "light"
   | "web-search"
   | "network"
   | "source-watch"
   | "scheduled-import"
+  | "feishu-import"
   | "mineru"
   | "api-server"
   | "output"
@@ -76,10 +82,12 @@ const CATEGORIES: Category[] = [
   { id: "llm", labelKey: "settings.categories.llm", icon: Bot },
   { id: "embedding", labelKey: "settings.categories.embedding", icon: Binary },
   { id: "multimodal", labelKey: "settings.categories.multimodal", icon: ImageIcon },
+  { id: "light", labelKey: "settings.categories.light", icon: Zap },
   { id: "web-search", labelKey: "settings.categories.webSearch", icon: Globe },
   { id: "network", labelKey: "settings.categories.network", icon: Network },
   { id: "source-watch", labelKey: "settings.categories.sourceWatch", icon: FolderSync },
   { id: "scheduled-import", labelKey: "settings.categories.scheduledImport", icon: Clock },
+  { id: "feishu-import", labelKey: "settings.categories.feishuImport", icon: CloudDownload },
   { id: "mineru", labelKey: "settings.categories.mineru", icon: FileText },
   { id: "api-server", labelKey: "settings.categories.apiServer", icon: Server },
   { id: "output", labelKey: "settings.categories.output", icon: Languages },
@@ -93,6 +101,7 @@ function initialDraft(
   llm: ReturnType<typeof useWikiStore.getState>["llmConfig"],
   embed: ReturnType<typeof useWikiStore.getState>["embeddingConfig"],
   multimodal: ReturnType<typeof useWikiStore.getState>["multimodalConfig"],
+  lightLlm: ReturnType<typeof useWikiStore.getState>["lightLlmConfig"],
   outputLanguage: ReturnType<typeof useWikiStore.getState>["outputLanguage"],
   proxy: ReturnType<typeof useWikiStore.getState>["proxyConfig"],
   scheduledImport: ReturnType<typeof useWikiStore.getState>["scheduledImportConfig"],
@@ -106,16 +115,8 @@ function initialDraft(
   theme?: AppTheme,
   zoomLevel?: number,
 ): SettingsDraft {
-  // Show absolute path: if stored path is empty, show default using project path
-  // If stored path is relative (legacy), prepend project path
-  // If stored path is absolute, show as-is
-  let displayPath = scheduledImport.path || ""
-  if (!displayPath && projectPath) {
-    displayPath = `${projectPath}/raw/sources`
-  } else if (displayPath && projectPath && !displayPath.startsWith("/") && !displayPath.match(/^[a-zA-Z]:[/\\]/)) {
-    // Legacy relative path - prepend project path for display
-    displayPath = `${projectPath}/${displayPath}`
-  }
+  // Deep-copy scheduled import paths for the draft (don't mutate store)
+  const draftPaths = (scheduledImport.paths || []).map((p) => ({ ...p }))
 
   return {
     provider: llm.provider,
@@ -148,13 +149,25 @@ function initialDraft(
     multimodalAzureModelFamily: multimodal.azureModelFamily ?? "auto",
     multimodalApiMode: multimodal.apiMode,
     multimodalConcurrency: multimodal.concurrency,
+
+    lightLlmEnabled: lightLlm.enabled,
+    lightLlmProvider: lightLlm.provider,
+    lightLlmApiKey: lightLlm.apiKey,
+    lightLlmModel: lightLlm.model,
+    lightLlmOllamaUrl: lightLlm.ollamaUrl,
+    lightLlmCustomEndpoint: lightLlm.customEndpoint,
+    lightLlmAzureApiVersion: lightLlm.azureApiVersion ?? "2024-10-21",
+    lightLlmAzureModelFamily: lightLlm.azureModelFamily ?? "auto",
+    lightLlmApiMode: lightLlm.apiMode,
+    lightLlmMaxContextSize: lightLlm.maxContextSize ?? 131072,
+
     outputLanguage,
     maxHistoryMessages,
     proxyEnabled: proxy.enabled,
     proxyUrl: proxy.url,
     proxyBypassLocal: proxy.bypassLocal,
     scheduledImportEnabled: scheduledImport.enabled,
-    scheduledImportPath: displayPath,
+    scheduledImportPaths: draftPaths,
     scheduledImportInterval: scheduledImport.interval,
     sourceWatchConfig: normalizeSourceWatchConfig(sourceWatch),
     mineruEnabled: mineru.enabled,
@@ -181,6 +194,8 @@ export function SettingsView() {
   const setEmbeddingConfig = useWikiStore((s) => s.setEmbeddingConfig)
   const multimodalConfig = useWikiStore((s) => s.multimodalConfig)
   const setMultimodalConfig = useWikiStore((s) => s.setMultimodalConfig)
+  const lightLlmConfig = useWikiStore((s) => s.lightLlmConfig)
+  const setLightLlmConfig = useWikiStore((s) => s.setLightLlmConfig)
   const outputLanguage = useWikiStore((s) => s.outputLanguage)
   const setOutputLanguage = useWikiStore((s) => s.setOutputLanguage)
   const proxyConfig = useWikiStore((s) => s.proxyConfig)
@@ -216,6 +231,7 @@ export function SettingsView() {
       llmConfig,
       embeddingConfig,
       multimodalConfig,
+      lightLlmConfig,
       outputLanguage,
       proxyConfig,
       scheduledImportConfig,
@@ -273,6 +289,7 @@ export function SettingsView() {
         llmConfig,
         embeddingConfig,
         multimodalConfig,
+        lightLlmConfig,
         outputLanguage,
         proxyConfig,
         scheduledImportConfig,
@@ -320,6 +337,7 @@ export function SettingsView() {
       loadEmbeddingConfig,
       saveMultimodalConfig,
       loadMultimodalConfig,
+      saveLightLlmConfig,
       saveOutputLanguage,
       loadOutputLanguage,
       saveProxyConfig,
@@ -380,6 +398,19 @@ export function SettingsView() {
       concurrency: Math.max(1, Math.min(16, draft.multimodalConcurrency || 4)),
     }
 
+    const newLightLlm = {
+      enabled: draft.lightLlmEnabled,
+      provider: draft.lightLlmProvider,
+      apiKey: draft.lightLlmApiKey,
+      model: draft.lightLlmModel,
+      ollamaUrl: draft.lightLlmOllamaUrl,
+      customEndpoint: draft.lightLlmCustomEndpoint,
+      azureApiVersion: draft.lightLlmProvider === "azure" ? draft.lightLlmAzureApiVersion.trim() : undefined,
+      azureModelFamily: draft.lightLlmProvider === "azure" ? draft.lightLlmAzureModelFamily : undefined,
+      apiMode: draft.lightLlmProvider === "custom" ? draft.lightLlmApiMode : undefined,
+      maxContextSize: draft.lightLlmMaxContextSize,
+    }
+
     const newProxy = {
       enabled: draft.proxyEnabled,
       url: draft.proxyUrl.trim(),
@@ -388,7 +419,7 @@ export function SettingsView() {
     const newSourceWatch = normalizeSourceWatchConfig(draft.sourceWatchConfig)
     const newScheduledImport = {
       enabled: draft.scheduledImportEnabled,
-      path: draft.scheduledImportPath,
+      paths: draft.scheduledImportPaths || [],
       interval: Math.max(1, Math.min(1440, draft.scheduledImportInterval || 60)),
       lastScan: scheduledImportConfig.lastScan,
     }
@@ -415,6 +446,7 @@ export function SettingsView() {
     setLlmConfig(newLlm)
     setEmbeddingConfig(newEmbed)
     setMultimodalConfig(newMultimodal)
+    setLightLlmConfig(newLightLlm)
     setOutputLanguage(draft.outputLanguage as typeof outputLanguage)
     setProxyConfig(newProxy)
     setSourceWatchConfig(newSourceWatch)
@@ -428,6 +460,7 @@ export function SettingsView() {
       await saveLlmConfig(newLlm)
       await saveEmbeddingConfig(newEmbed)
       await saveMultimodalConfig(newMultimodal)
+      await saveLightLlmConfig(newLightLlm)
       await saveOutputLanguage(draft.outputLanguage as typeof outputLanguage, project?.id)
       await saveProxyConfig(newProxy)
       await saveSourceWatchConfig(newSourceWatch, project?.id)
@@ -456,7 +489,8 @@ export function SettingsView() {
         const { startScheduledImport, stopScheduledImport } = await import("@/lib/scheduled-import")
         if (
           newScheduledImport.enabled &&
-          newScheduledImport.path &&
+          newScheduledImport.paths &&
+          newScheduledImport.paths.length > 0 &&
           newScheduledImport.interval > 0
         ) {
           startScheduledImport(project, newScheduledImport)
@@ -601,6 +635,8 @@ export function SettingsView() {
         return <EmbeddingSection draft={draft} setDraft={setDraft} />
       case "multimodal":
         return <MultimodalSection draft={draft} setDraft={setDraft} />
+      case "light":
+        return <LightLlmSection draft={draft} setDraft={setDraft} />
       case "web-search":
         return <WebSearchSection />
       case "network":
@@ -609,6 +645,8 @@ export function SettingsView() {
         return <SourceWatchSection draft={draft} setDraft={setDraft} projectReady={!!project} />
       case "scheduled-import":
         return <ScheduledImportSection draft={draft} setDraft={setDraft} />
+      case "feishu-import":
+        return <FeishuImportSection />
       case "mineru":
         return <MineruSection draft={draft} setDraft={setDraft} />
       case "api-server":
@@ -686,7 +724,7 @@ export function SettingsView() {
         {/* Global Save bar hidden for sections that persist inline:
             - "llm" saves per-row on every edit (independent per-preset state)
             - "about" has no draft-bound fields */}
-        {active !== "about" && active !== "llm" && (
+        {active !== "about" && active !== "llm" && active !== "feishu-import" && (
           <div className="shrink-0 border-t bg-background/80 backdrop-blur px-8 py-3">
             <div className="mx-auto flex max-w-2xl items-center justify-between gap-4">
               <p className={`text-xs ${saveError ? "text-destructive" : "text-muted-foreground"}`}>

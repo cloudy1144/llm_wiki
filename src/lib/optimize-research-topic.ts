@@ -1,5 +1,7 @@
 import { streamChat } from "./llm-client"
 import type { LlmConfig } from "@/stores/wiki-store"
+import { useWikiStore } from "@/stores/wiki-store"
+import { resolveLightConfig } from "./has-usable-llm"
 import { buildLanguageDirective } from "./output-language"
 
 export interface OptimizedTopic {
@@ -19,6 +21,10 @@ export async function optimizeResearchTopic(
   overview: string,
   purpose: string,
 ): Promise<OptimizedTopic> {
+  // 研究主题优化是轻量任务，使用廉价模型降低成本
+  const lightLlmConfig = useWikiStore.getState().lightLlmConfig
+  const effectiveLlm = resolveLightConfig(lightLlmConfig) ?? llmConfig
+
   const prompt = [
     "You are a research assistant. Given a knowledge gap found in a personal wiki, generate a precise research topic and search queries.",
     "",
@@ -49,7 +55,7 @@ export async function optimizeResearchTopic(
   let result = ""
 
   await streamChat(
-    llmConfig,
+    effectiveLlm,
     [{ role: "user", content: prompt }],
     {
       onToken: (token) => { result += token },

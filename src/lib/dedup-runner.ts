@@ -16,6 +16,8 @@ import {
 import { loadEmbeddingConfig } from "@/lib/project-store"
 import { normalizePath } from "@/lib/path-utils"
 import type { EmbeddingConfig, LlmConfig } from "@/stores/wiki-store"
+import { useWikiStore } from "@/stores/wiki-store"
+import { resolveLightConfig } from "@/lib/has-usable-llm"
 import type { FileNode } from "@/types/wiki"
 
 /**
@@ -191,10 +193,14 @@ export async function runDuplicateDetection(
   llmConfig: LlmConfig,
   options: { signal?: AbortSignal } = {},
 ): Promise<DuplicateGroup[]> {
+  // 去重分析是轻量任务，使用廉价模型降低成本
+  const lightLlmConfig = useWikiStore.getState().lightLlmConfig
+  const effectiveLlm = resolveLightConfig(lightLlmConfig) ?? llmConfig
+
   const summaries = await loadAllEntitySummaries(projectPath)
   if (summaries.length < 2) return []
   const notDup = await loadNotDuplicates(projectPath)
-  const llm = buildDedupLlmCall(llmConfig, DEDUP_DETECTION_MAX_TOKENS)
+  const llm = buildDedupLlmCall(effectiveLlm, DEDUP_DETECTION_MAX_TOKENS)
   const embeddingConfig = await loadEmbeddingConfig()
 
   const embeddingEndpoint =
@@ -375,6 +381,10 @@ export async function executeMerge(
   llmConfig: LlmConfig,
   options: { signal?: AbortSignal } = {},
 ): Promise<MergeResult> {
+  // 去重合并是轻量任务，使用廉价模型降低成本
+  const lightLlmConfig = useWikiStore.getState().lightLlmConfig
+  const effectiveLlm = resolveLightConfig(lightLlmConfig) ?? llmConfig
+
   const pp = normalizePath(projectPath)
 
   // 1. Resolve each group slug to its actual on-disk path + content
@@ -407,7 +417,7 @@ export async function executeMerge(
   // Merge rewrites a COMPLETE page that gets written to disk, so it gets
   // the generous merge budget — never the small detection cap, which
   // would truncate the canonical content.
-  const llm = buildDedupLlmCall(llmConfig, DEDUP_MERGE_MAX_TOKENS)
+  const llm = buildDedupLlmCall(effectiveLlm, DEDUP_MERGE_MAX_TOKENS)
   const result = await mergeDuplicateGroup(
     {
       group: groupPages,

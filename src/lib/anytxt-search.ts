@@ -1,4 +1,6 @@
 import type { AnyTxtConfig, LlmConfig } from "@/stores/wiki-store"
+import { useWikiStore } from "@/stores/wiki-store"
+import { resolveLightConfig } from "@/lib/has-usable-llm"
 import { getHttpFetch, isFetchNetworkError } from "@/lib/tauri-fetch"
 import { normalizePath } from "@/lib/path-utils"
 import { streamChat } from "@/lib/llm-client"
@@ -110,8 +112,12 @@ export async function prepareAnyTxtQueries(queries: string[], llmConfig?: LlmCon
   if (cleanQueries.length === 0) return []
   if (!llmConfig) return cleanQueries
 
+  // 搜索意图解析是轻量任务，使用廉价模型降低成本
+  const lightLlmConfig = useWikiStore.getState().lightLlmConfig
+  const effectiveLlm = resolveLightConfig(lightLlmConfig) ?? llmConfig
+
   try {
-    const rewritten = await rewriteAnyTxtQueries(cleanQueries, llmConfig)
+    const rewritten = await rewriteAnyTxtQueries(cleanQueries, effectiveLlm)
     return uniqueAnyTxtQueries([...rewritten, ...cleanQueries])
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)

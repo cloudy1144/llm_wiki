@@ -11,6 +11,7 @@ import {
 import { streamChat } from "@/lib/llm-client"
 import type { LlmConfig } from "@/stores/wiki-store"
 import { useWikiStore } from "@/stores/wiki-store"
+import { resolveLightConfig } from "@/lib/has-usable-llm"
 import { parseWithMineru } from "@/lib/mineru"
 import { useChatStore } from "@/stores/chat-store"
 import { useActivityStore } from "@/stores/activity-store"
@@ -487,6 +488,10 @@ async function autoIngestImpl(
   signal?: AbortSignal,
   folderContext?: string,
 ): Promise<string[]> {
+  // 解析轻量模型配置 — 用于低复杂度步骤（生成、合并、修复）
+  const lightLlmConfig = useWikiStore.getState().lightLlmConfig
+  const lightLlm = resolveLightConfig(lightLlmConfig) ?? llmConfig
+
   const pp = normalizePath(projectPath)
   const sp = normalizePath(sourcePath)
   const activity = useActivityStore.getState()
@@ -836,8 +841,9 @@ async function autoIngestImpl(
 
   let generation = ""
 
+  // 生成步骤使用轻量模型降低成本
   await streamChat(
-    llmConfig,
+    lightLlm,
     [
       { role: "system", content: buildGenerationPrompt(schema, purpose, index, sourceIdentity, overview, sourceContext, sourceSummaryPath) },
       {
@@ -938,7 +944,7 @@ async function autoIngestImpl(
   const writeResult = await writeFileBlocks(
     pp,
     generation,
-    llmConfig,
+    lightLlm,
     sourceIdentity,
     sourceSummaryPath,
     signal,
@@ -965,8 +971,9 @@ async function autoIngestImpl(
     })
     let aggregateRepairOutput = ""
     try {
+      // 聚合修复使用轻量模型降低成本
       await streamChat(
-        llmConfig,
+        lightLlm,
         [
           {
             role: "system",
@@ -1011,7 +1018,7 @@ async function autoIngestImpl(
         const repairResult = await writeFileBlocks(
           pp,
           filteredRepair.text,
-          llmConfig,
+          lightLlm,
           sourceIdentity,
           sourceSummaryPath,
           signal,
@@ -1598,6 +1605,7 @@ async function writeFileBlocks(
         const toWrite = await mergePageContent(
           content,
           existing || null,
+          // Wiki 合并使用轻量模型降低成本
           buildPageMerger(llmConfig),
           {
             sourceFileName,

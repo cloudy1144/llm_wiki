@@ -1,6 +1,6 @@
 import { load } from "@tauri-apps/plugin-store"
 import type { WikiProject } from "@/types/wiki"
-import type { ApiConfig, GeneralConfig, LlmConfig, SearchApiConfig, EmbeddingConfig, MineruConfig, MultimodalConfig, OutputLanguage, ProviderConfigs, ProxyConfig, ScheduledImportConfig, SourceWatchConfig } from "@/stores/wiki-store"
+import type { ApiConfig, GeneralConfig, LlmConfig, LightLlmConfig, SearchApiConfig, EmbeddingConfig, MineruConfig, MultimodalConfig, OutputLanguage, ProviderConfigs, ProxyConfig, ScheduledImportConfig, ScheduledImportPath, SourceWatchConfig } from "@/stores/wiki-store"
 import { normalizeSourceWatchConfig } from "@/lib/source-watch-config"
 import { normalizePath } from "@/lib/path-utils"
 import { DEFAULT_ZOOM_LEVEL, clampZoomLevel } from "@/stores/zoom-store"
@@ -109,6 +109,18 @@ export async function saveMultimodalConfig(config: MultimodalConfig): Promise<vo
 export async function loadMultimodalConfig(): Promise<MultimodalConfig | null> {
   const store = await getStore()
   return (await store.get<MultimodalConfig>(MULTIMODAL_KEY)) ?? null
+}
+
+const LIGHT_LLM_KEY = "lightLlmConfig"
+
+export async function saveLightLlmConfig(config: LightLlmConfig): Promise<void> {
+  const store = await getStore()
+  await store.set(LIGHT_LLM_KEY, config)
+}
+
+export async function loadLightLlmConfig(): Promise<LightLlmConfig | null> {
+  const store = await getStore()
+  return (await store.get<LightLlmConfig>(LIGHT_LLM_KEY)) ?? null
 }
 
 const MINERU_KEY = "mineruConfig"
@@ -237,16 +249,45 @@ export async function saveScheduledImportConfig(projectPath: string, config: Sch
 export async function loadScheduledImportConfig(projectPath: string): Promise<ScheduledImportConfig | null> {
   const store = await getStore()
   const perProject = await store.get<ScheduledImportConfig>(scheduledImportKey(projectPath))
-  if (perProject) return perProject
+  if (perProject) {
+    return migrateScheduledImportConfig(perProject)
+  }
   // Migrate from legacy global key (pre-0.4.8)
   const legacy = await store.get<ScheduledImportConfig>(SCHEDULED_IMPORT_GLOBAL_KEY)
   if (legacy) {
-    await store.set(scheduledImportKey(projectPath), legacy)
+    const migrated = migrateScheduledImportConfig(legacy)
+    await store.set(scheduledImportKey(projectPath), migrated)
     await store.delete(SCHEDULED_IMPORT_GLOBAL_KEY)
     await store.save()
-    return legacy
+    return migrated
   }
   return null
+}
+
+/**
+ * 迁移旧版单路径 ScheduledImportConfig 到新版多路径格式。
+ * 兼容 pre-0.4.8 的 `path` 字段 → 新版 `paths` 数组。
+ */
+function migrateScheduledImportConfig(raw: any): ScheduledImportConfig {
+  // 已经是新版格式
+  if (raw.paths && Array.isArray(raw.paths)) {
+    return raw as ScheduledImportConfig
+  }
+  // 旧版单路径格式：将 path 转换为 paths 数组
+  const paths: ScheduledImportPath[] = []
+  if (raw.path) {
+    paths.push({
+      id: `legacy-${Date.now()}`,
+      path: raw.path,
+      type: "local",
+    })
+  }
+  return {
+    enabled: Boolean(raw.enabled),
+    paths,
+    interval: raw.interval ?? 60,
+    lastScan: raw.lastScan ?? null,
+  }
 }
 
 export async function removeFromRecentProjects(

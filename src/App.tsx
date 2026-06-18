@@ -9,7 +9,7 @@ import { useLintStore } from "@/stores/lint-store"
 import { useChatStore } from "@/stores/chat-store"
 import { BASE_FONT_SIZE_PX, useZoomStore } from "@/stores/zoom-store"
 import { listDirectory, openProject } from "@/commands/fs"
-import { getLastProject, getRecentProjects, saveLastProject, loadLlmConfig, loadLanguage, loadSearchApiConfig, loadEmbeddingConfig, loadMineruConfig, loadMultimodalConfig, loadOutputLanguage, loadProviderConfigs, loadActivePresetId, loadProxyConfig, loadScheduledImportConfig, saveScheduledImportConfig, loadSourceWatchConfig, loadApiConfig, loadGeneralConfig, loadZoomLevel } from "@/lib/project-store"
+import { getLastProject, getRecentProjects, saveLastProject, loadLlmConfig, loadLanguage, loadSearchApiConfig, loadEmbeddingConfig, loadMineruConfig, loadMultimodalConfig, loadLightLlmConfig, loadOutputLanguage, loadProviderConfigs, loadActivePresetId, loadProxyConfig, loadScheduledImportConfig, saveScheduledImportConfig, loadSourceWatchConfig, loadApiConfig, loadGeneralConfig, loadZoomLevel } from "@/lib/project-store"
 import { loadReviewItems, loadLintItems, loadChatHistory } from "@/lib/persist"
 import { setupAutoSave } from "@/lib/auto-save"
 import { startClipWatcher } from "@/lib/clip-watcher"
@@ -239,6 +239,11 @@ function App() {
           useWikiStore.getState().setMultimodalConfig(savedMultimodalConfig)
         }
 
+        const savedLightLlmConfig = await loadLightLlmConfig()
+        if (savedLightLlmConfig) {
+          useWikiStore.getState().setLightLlmConfig(savedLightLlmConfig)
+        }
+
         const savedMineruConfig = await loadMineruConfig()
         if (savedMineruConfig) {
           useWikiStore.getState().setMineruConfig(savedMineruConfig)
@@ -350,20 +355,12 @@ function App() {
       try {
         const savedScheduledImport = await loadScheduledImportConfig(proj.path)
         if (savedScheduledImport) {
-          // Migrate relative path to absolute (backward compatibility)
-          let path = savedScheduledImport.path
-          if (path && !path.startsWith("/") && !path.match(/^[a-zA-Z]:[/\\]/)) {
-            path = `${proj.path}/${path}`
-          }
-          useWikiStore.getState().setScheduledImportConfig({
-            ...savedScheduledImport,
-            path,
-          })
+          useWikiStore.getState().setScheduledImportConfig(savedScheduledImport)
         } else {
           // Reset to default for new projects
           useWikiStore.getState().setScheduledImportConfig({
             enabled: false,
-            path: `${proj.path}/raw/sources`,
+            paths: [],
             interval: 60,
             lastScan: null,
           })
@@ -373,7 +370,7 @@ function App() {
       }
       // Start scheduled import if enabled
       const scheduledImportConfig = useWikiStore.getState().scheduledImportConfig
-      if (scheduledImportConfig.enabled && scheduledImportConfig.path && scheduledImportConfig.interval > 0) {
+      if (scheduledImportConfig.enabled && scheduledImportConfig.paths && scheduledImportConfig.paths.length > 0 && scheduledImportConfig.interval > 0) {
         import("@/lib/scheduled-import").then(({ startScheduledImport }) => {
           startScheduledImport(proj, scheduledImportConfig)
         }).catch((err) =>

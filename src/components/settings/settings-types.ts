@@ -1,5 +1,5 @@
 import type { CustomApiMode } from "./llm-presets"
-import type { AzureModelFamily, CloseBehavior, MineruModelVersion, ReasoningConfig, SourceWatchConfig } from "@/stores/wiki-store"
+import type { AzureModelFamily, CloseBehavior, MineruModelVersion, ReasoningConfig, ScheduledImportPath, SourceWatchConfig } from "@/stores/wiki-store"
 
 /**
  * Shape of the draft state each section reads from and writes into.
@@ -48,6 +48,18 @@ export interface SettingsDraft {
   multimodalApiMode: CustomApiMode | undefined
   multimodalConcurrency: number
 
+  // Light LLM (低成本模型，用于低复杂度任务)
+  lightLlmEnabled: boolean
+  lightLlmProvider: "openai" | "anthropic" | "google" | "azure" | "ollama" | "custom" | "minimax" | "claude-code" | "codex-cli"
+  lightLlmApiKey: string
+  lightLlmModel: string
+  lightLlmOllamaUrl: string
+  lightLlmCustomEndpoint: string
+  lightLlmAzureApiVersion: string
+  lightLlmAzureModelFamily: AzureModelFamily
+  lightLlmApiMode: CustomApiMode | undefined
+  lightLlmMaxContextSize: number
+
   // Output preferences
   outputLanguage: string
   maxHistoryMessages: number
@@ -61,7 +73,7 @@ export interface SettingsDraft {
 
   // Scheduled Import
   scheduledImportEnabled: boolean
-  scheduledImportPath: string
+  scheduledImportPaths: ScheduledImportPath[]
   scheduledImportInterval: number // minutes
 
   // UI

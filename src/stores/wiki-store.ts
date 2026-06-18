@@ -167,9 +167,17 @@ interface ProxyConfig {
   bypassLocal: boolean
 }
 
+/** 导入路径项：本地目录或飞书链接 */
+interface ScheduledImportPath {
+  id: string       // 唯一标识
+  path: string     // 本地目录路径或飞书 URL
+  type: "local" | "feishu"
+  label?: string   // 可选标签
+}
+
 interface ScheduledImportConfig {
   enabled: boolean
-  path: string // 监控目录的相对路径（相对于项目根目录），空字符串表示使用默认的 "raw"
+  paths: ScheduledImportPath[]  // 监控路径列表
   interval: number // 扫描间隔（分钟）
   lastScan: number | null // 上次扫描时间戳
 }
@@ -238,6 +246,24 @@ interface MultimodalConfig {
   apiMode?: CustomApiMode
   /** Max parallel caption requests during ingest. >=1. */
   concurrency: number
+}
+
+/**
+ * 轻量模型配置，用于低复杂度任务降低成本。
+ * 独立于主力 llmConfig，拥有完整的 provider/apiKey/model 配置。
+ * `enabled` 为 false 时所有轻量任务回退到主力模型。
+ */
+interface LightLlmConfig {
+  enabled: boolean
+  provider: LlmConfig["provider"]
+  apiKey: string
+  model: string
+  ollamaUrl: string
+  customEndpoint: string
+  azureApiVersion?: string
+  azureModelFamily?: AzureModelFamily
+  apiMode?: CustomApiMode
+  maxContextSize: number
 }
 
 /**
@@ -321,6 +347,8 @@ interface WikiState {
    */
   pendingScrollImageSrc: string | null
   activeView: "chat" | "wiki" | "sources" | "search" | "graph" | "lint" | "review" | "settings"
+  /** 记录从 review/lint 跳转到 wiki 预览前的上一个视图，用于返回按钮 */
+  previousView: WikiState["activeView"] | null
   llmConfig: LlmConfig
   /** Per-provider-preset stored overrides (API key, model, endpoint, …). */
   providerConfigs: ProviderConfigs
@@ -329,6 +357,7 @@ interface WikiState {
   searchApiConfig: SearchApiConfig
   embeddingConfig: EmbeddingConfig
   multimodalConfig: MultimodalConfig
+  lightLlmConfig: LightLlmConfig
   outputLanguage: OutputLanguage
   proxyConfig: ProxyConfig
   scheduledImportConfig: ScheduledImportConfig
@@ -353,6 +382,7 @@ interface WikiState {
   setSearchApiConfig: (config: SearchApiConfig) => void
   setEmbeddingConfig: (config: EmbeddingConfig) => void
   setMultimodalConfig: (config: MultimodalConfig) => void
+  setLightLlmConfig: (config: LightLlmConfig) => void
   setOutputLanguage: (lang: OutputLanguage) => void
   setProxyConfig: (config: ProxyConfig) => void
   setScheduledImportConfig: (config: ScheduledImportConfig) => void
@@ -372,6 +402,7 @@ export const useWikiStore = create<WikiState>((set) => ({
   externalPreview: null,
   pendingScrollImageSrc: null,
   activeView: "wiki",
+  previousView: null,
   llmConfig: {
     provider: "openai",
     apiKey: "",
@@ -394,18 +425,25 @@ export const useWikiStore = create<WikiState>((set) => ({
     set({ selectedFile, previewContentPath: null, externalPreview: null }),
   setFileContent: (fileContent) => set({ fileContent }),
   openPathInPreview: (selectedFile) =>
-    set({ selectedFile, previewContentPath: null, externalPreview: null, activeView: "wiki" }),
+    set((state) => ({
+      selectedFile,
+      previewContentPath: null,
+      externalPreview: null,
+      activeView: "wiki",
+      previousView: state.activeView !== "wiki" ? state.activeView : state.previousView,
+    })),
   openFileInPreview: (selectedFile, fileContent) =>
-    set({
+    set((state) => ({
       selectedFile,
       fileContent,
       previewContentPath: selectedFile,
       externalPreview: null,
       activeView: "wiki",
-    }),
+      previousView: state.activeView !== "wiki" ? state.activeView : state.previousView,
+    })),
   setExternalPreview: (externalPreview) => set({ externalPreview }),
   setPendingScrollImageSrc: (pendingScrollImageSrc) => set({ pendingScrollImageSrc }),
-  setActiveView: (activeView) => set({ activeView }),
+  setActiveView: (activeView) => set({ activeView, previousView: null }),
   searchApiConfig: {
     provider: "none",
     apiKey: "",
@@ -446,6 +484,19 @@ export const useWikiStore = create<WikiState>((set) => ({
     azureApiVersion: "2024-10-21",
     apiMode: "chat_completions",
     concurrency: 4,
+  },
+
+  lightLlmConfig: {
+    // 默认关闭，用户需要在 Settings → Light LLM 手动开启并配置
+    enabled: false,
+    provider: "custom",
+    apiKey: "",
+    model: "",
+    ollamaUrl: "http://localhost:11434",
+    customEndpoint: "",
+    azureApiVersion: "2024-10-21",
+    apiMode: "chat_completions",
+    maxContextSize: 131072,
   },
 
   outputLanguage: "auto",
@@ -489,6 +540,7 @@ export const useWikiStore = create<WikiState>((set) => ({
   setSearchApiConfig: (searchApiConfig) => set({ searchApiConfig }),
   setEmbeddingConfig: (embeddingConfig) => set({ embeddingConfig }),
   setMultimodalConfig: (multimodalConfig) => set({ multimodalConfig }),
+  setLightLlmConfig: (lightLlmConfig) => set({ lightLlmConfig }),
   setOutputLanguage: (outputLanguage) => set({ outputLanguage }),
   setProxyConfig: (proxyConfig) => set({ proxyConfig }),
   setScheduledImportConfig: (scheduledImportConfig) => set({ scheduledImportConfig }),
@@ -499,4 +551,4 @@ export const useWikiStore = create<WikiState>((set) => ({
   bumpDataVersion: () => set((state) => ({ dataVersion: state.dataVersion + 1 })),
 }))
 
-export type { WikiState, LlmConfig, SearchApiConfig, EmbeddingConfig, MultimodalConfig, OutputLanguage, ProxyConfig, ScheduledImportConfig, SourceWatchConfig, ApiConfig }
+export type { WikiState, LlmConfig, SearchApiConfig, EmbeddingConfig, MultimodalConfig, LightLlmConfig, OutputLanguage, ProxyConfig, ScheduledImportConfig, ScheduledImportPath, SourceWatchConfig, ApiConfig }

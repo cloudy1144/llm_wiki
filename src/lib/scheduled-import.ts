@@ -11,7 +11,7 @@ import {
 import type { FileNode, WikiProject } from "@/types/wiki"
 import { isAbsolutePath, normalizePath } from "@/lib/path-utils"
 import { useWikiStore } from "@/stores/wiki-store"
-import type { ScheduledImportConfig } from "@/stores/wiki-store"
+import type { ScheduledImportConfig, ScheduledImportPath } from "@/stores/wiki-store"
 import {
   loadScheduledImportConfig,
   saveScheduledImportConfig,
@@ -21,6 +21,7 @@ import {
   isIngestableSourcePath,
 } from "@/lib/source-lifecycle"
 import { useActivityStore } from "@/stores/activity-store"
+import { invoke } from "@tauri-apps/api/core"
 
 interface ImportDb {
   files: Record<string, string>
@@ -44,6 +45,16 @@ type ScanOptions = {
 const EMPTY_DB: ImportDb = {
   files: {},
   lastScan: null,
+}
+
+/** 飞书导入命令返回结果 */
+interface FeishuImportResult {
+  ok: boolean
+  files: string[]
+  count: number
+  total: number
+  error: string
+  warning: string
 }
 
 let scanTimer: ReturnType<typeof setInterval> | null = null
@@ -445,24 +456,69 @@ export async function scanAndImport(
   }
 }
 
+/** 执行飞书文档导入并触发摄取 */
+async function runFeishuImport(
+  project: WikiProject,
+  feishuImport: ScheduledImportPath,
+): Promise<void> {
+  try {
+    console.log(`[scheduled-import] 导入飞书文档: ${feishuImport.path}`)
+    const result = await invoke<FeishuImportResult>("feishu_import", {
+      wikiUrl: feishuImport.path,
+      projectPath: project.path,
+    })
+
+    if (!result.ok) {
+      console.warn(`[scheduled-import] 飞书导入失败: ${result.error}`)
+      return
+    }
+
+    if (result.files.length === 0) {
+      return
+    }
+
+    // 导入成功，将文件入队给 LLM 提取
+    const llmConfig = useWikiStore.getState().llmConfig
+    const ids = await enqueueSourceIngest(project, result.files, llmConfig)
+    if (ids.length > 0) {
+      const projectTree = await listDirectory(project.path)
+      useWikiStore.getState().setFileTree(projectTree)
+      useWikiStore.getState().bumpDataVersion()
+    } else {
+      console.warn("[scheduled-import] LLM 未配置；飞书文档已下载但未触发提取")
+    }
+  } catch (err) {
+    console.error(`[scheduled-import] 飞书导入异常: ${feishuImport.path}`, err)
+  }
+}
+
 export function startScheduledImport(
   project: WikiProject,
   config: ScheduledImportConfig,
 ): void {
   stopScheduledImport()
 
-  if (!config.enabled || !config.path || config.interval <= 0) {
+  if (!config.enabled || !config.paths || config.paths.length === 0 || config.interval <= 0) {
     return
   }
 
   const runId = ++activeRunId
   const intervalMs = Math.max(1, Math.min(1440, config.interval)) * 60 * 1000
 
-  void scanAndImport(project, config.path, { runId })
+  // 立即执行一次扫描
+  const runCycle = () => {
+    for (const importPath of config.paths) {
+      if (importPath.type === "local") {
+        void scanAndImport(project, importPath.path, { runId })
+      } else if (importPath.type === "feishu") {
+        void runFeishuImport(project, importPath)
+      }
+    }
+  }
 
-  scanTimer = setInterval(() => {
-    void scanAndImport(project, config.path, { runId })
-  }, intervalMs)
+  runCycle()
+
+  scanTimer = setInterval(runCycle, intervalMs)
 }
 
 export function stopScheduledImport(): void {

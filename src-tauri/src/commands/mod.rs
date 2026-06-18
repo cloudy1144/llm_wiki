@@ -2,6 +2,7 @@ pub mod claude_cli;
 mod cli_resolver;
 pub mod codex_cli;
 pub mod extract_images;
+pub mod feishu;
 pub mod file_sync;
 pub mod fs;
 pub mod project;

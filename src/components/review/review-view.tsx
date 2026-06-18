@@ -132,6 +132,9 @@ export function ReviewView() {
           // try next
         }
       }
+      // 所有候选路径均失败时，显示错误预览（与 lint 打开行为一致）
+      useWikiStore.getState().openFileInPreview(candidates[0], `Unable to load: ${page}`)
+      return
     } else if (action.startsWith("delete:") && project) {
       // Delete a file
       const filePath = action.slice(7)
@@ -223,6 +226,11 @@ export function ReviewView() {
         resolveItem(id, action)
       }
     } else {
+      // 非 dismiss/skip 类操作需要 project 才能执行。
+      // 若 project 为空则保留待审阅项，避免静默消除导致"点击无响应"。
+      if (!project && !actionIsDismissal(action)) {
+        return
+      }
       resolveItem(id, action)
     }
   }, [project, items, resolveItem, setFileTree])

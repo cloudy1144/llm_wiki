@@ -1,4 +1,4 @@
-import type { LlmConfig } from "@/stores/wiki-store"
+import type { LlmConfig, LightLlmConfig } from "@/stores/wiki-store"
 
 export type LlmProvider = LlmConfig["provider"]
 
@@ -44,4 +44,39 @@ export function hasUsableLlm(
 ): boolean {
   if (PROVIDERS_WITHOUT_KEY.has(cfg.provider)) return true
   return (cfg.apiKey ?? "").trim().length > 0
+}
+
+/**
+ * 检查轻量模型是否可用。当 enabled=false 或未配置密钥时返回 false。
+ * 调用方应回退到 `hasUsableLlm(llmConfig)` 判断主力模型。
+ */
+export function hasUsableLightLlm(
+  cfg: Pick<LlmConfig, "provider" | "apiKey"> & { enabled: boolean },
+): boolean {
+  if (!cfg.enabled) return false
+  if (PROVIDERS_WITHOUT_KEY.has(cfg.provider)) return true
+  return (cfg.apiKey ?? "").trim().length > 0
+}
+
+/**
+ * 将轻量模型配置解析为 LlmConfig 格式，供 streamChat 使用。
+ * enabled 为 false 时返回 null，调用方应回退到主力 llmConfig。
+ */
+export function resolveLightConfig(light: LightLlmConfig): LlmConfig | null {
+  if (!light.enabled) return null
+  const resolved: LlmConfig = {
+    provider: light.provider,
+    apiKey: light.apiKey,
+    model: light.model,
+    ollamaUrl: light.ollamaUrl,
+    customEndpoint: light.customEndpoint,
+    azureApiVersion: light.azureApiVersion,
+    azureModelFamily: light.azureModelFamily,
+    apiMode: light.apiMode,
+    maxContextSize: light.maxContextSize,
+  }
+  console.info(
+    `[Light LLM] 轻量模型已激活: ${light.provider}/${light.model}`,
+  )
+  return resolved
 }

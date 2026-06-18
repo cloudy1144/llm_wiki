@@ -73,6 +73,8 @@ export function LintView() {
   const [hasRun, setHasRun] = useState(false)
   const [runSemantic, setRunSemantic] = useState(false)
   const [fixingId, setFixingId] = useState<string | null>(null)
+  const [fixingAll, setFixingAll] = useState(false)
+  const [fixAllProgress, setFixAllProgress] = useState<{ current: number; total: number } | null>(null)
   const [fixError, setFixError] = useState<string | null>(null)
 
   const handleRunLint = useCallback(async () => {
@@ -195,14 +197,19 @@ export function LintView() {
         }
 
         default: {
-          // Semantic issues → send to Review for manual resolution
+          // 语义问题的 page 字段是 LLM 生成的标题而非 wiki 路径，
+          // 实际页面路径在 affectedPages 中，优先用它作为打开目标
+          const openTarget = item.affectedPages?.[0] ?? item.page
+          const openOptions = openTarget && !openTarget.match(/^\[/)
+            ? [{ label: t("lint.openEdit"), action: `open:${openTarget}` }]
+            : []
           useReviewStore.getState().addItem({
             type: "confirm",
             title: item.detail.slice(0, 80),
             description: item.detail,
             affectedPages: item.affectedPages ?? [item.page],
             options: [
-              { label: t("lint.openEdit"), action: `open:${item.page}` },
+              ...openOptions,
               { label: t("lint.skip"), action: "Skip" },
             ],
           })
@@ -221,6 +228,52 @@ export function LintView() {
     } finally {
       setFixingId(null)
     }
+  }
+
+  async function handleFixAll() {
+    if (!project) return
+    const pp = normalizePath(project.path)
+    setFixingAll(true)
+    setFixError(null)
+
+    // 快照当前所有条目，避免迭代中条目被删除导致索引错乱
+    const snapshot = useLintStore.getState().items.slice()
+    const total = snapshot.length
+    setFixAllProgress({ current: 0, total })
+
+    let autoFixed = 0
+    let sentToReview = 0
+
+    for (let i = 0; i < snapshot.length; i++) {
+      // 每次从 store 重新读取确保条目仍存在（handleFix 会自动删除已修复项）
+      const currentItems = useLintStore.getState().items
+      const item = currentItems.find((it) => it.id === snapshot[i].id)
+      if (!item) {
+        // 该项已被之前的迭代处理掉，跳过
+        setFixAllProgress({ current: i + 1, total })
+        continue
+      }
+
+      await handleFix(item)
+      const canAutoFix =
+        (item.type === "orphan" && item.suggestedSource) ||
+        (item.type === "broken-link" && item.brokenTarget) ||
+        (item.type === "no-outlinks" && item.suggestedTarget)
+
+      if (canAutoFix) {
+        autoFixed++
+      } else {
+        sentToReview++
+      }
+      setFixAllProgress({ current: i + 1, total })
+    }
+
+    // 刷新文件树
+    const tree = await listDirectory(pp)
+    setFileTree(tree)
+    bumpDataVersion()
+    setFixingAll(false)
+    setFixAllProgress(null)
   }
 
   async function handleDeleteOrphan(item: LintItem) {
@@ -277,6 +330,19 @@ export function LintView() {
             />
             {t("lint.semantic")}
           </label>
+          {items.length > 0 && (
+            <Button
+              size="sm"
+              variant="default"
+              onClick={handleFixAll}
+              disabled={fixingAll || running || !project}
+            >
+              <Wrench className="mr-1.5 h-3.5 w-3.5" />
+              {fixingAll && fixAllProgress
+                ? `${t("lint.fixing")} ${fixAllProgress.current}/${fixAllProgress.total}`
+                : t("lint.fixAll")}
+            </Button>
+          )}
           <Button
             size="sm"
             onClick={handleRunLint}
