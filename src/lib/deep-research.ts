@@ -1,5 +1,6 @@
 import { anyTxtSearchSmart, hasConfiguredAnyTxt } from "./anytxt-search"
 import { hasConfiguredSearchProvider, resolveSearchConfig, webSearch } from "./web-search"
+import { searchExternalSources } from "./external-sources"
 import { streamChat } from "./llm-client"
 import { autoIngest, currentWikiDate } from "./ingest"
 import { writeFile, readFile, listDirectory } from "@/commands/fs"
@@ -102,6 +103,26 @@ export async function collectResearchSources(
   }
   if (useAnyTxt) {
     calls.push(deps.anyTxtSearch(queries, resolvedSearchConfig.anyTxt, options.llmConfig, 15, projectPath).then((results) => ({ results })))
+  }
+
+  // 免费外部信息源（Wikipedia / arXiv / OpenAlex）
+  const externalSources = resolvedSearchConfig.deepResearchExternalSources ?? []
+  if (externalSources.length > 0) {
+    const webQuery = webQueries[0] ?? ""
+    if (webQuery) {
+      calls.push(
+        searchExternalSources(webQuery, externalSources, 5).then(({ results, errors: extErrors }) => {
+          for (const err of extErrors) {
+            errors.push(err)
+          }
+          return { results }
+        }).catch((err) => {
+          const message = err instanceof Error ? err.message : String(err)
+          errors.push(`External Sources: ${message}`)
+          return { results: [] }
+        }),
+      )
+    }
   }
 
   const settled = await Promise.allSettled(calls)

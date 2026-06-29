@@ -117,7 +117,27 @@ export function LintView() {
         // try next
       }
     }
-    openFileInPreview(candidates[0], `Unable to load: ${page}`)
+    // 所有候选路径均失败，文件不存在 — 自动创建模板页面供编辑
+    try {
+      const slug = page.replace(/^wiki\//, "").replace(/\.md$/, "")
+      const title = slug.split("/").pop()!.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+      const filePath = candidates.find((c) => c.endsWith(".md")) ?? `${candidates[0]}.md`
+
+      const date = new Date().toISOString().slice(0, 10)
+      const frontmatter = `---\ntype: concept\ntitle: "${title.replace(/"/g, '\\"')}"\ncreated: ${date}\ntags: []\nrelated: []\n---\n\n`
+      const body = `# ${title}\n`
+      const pageContent = frontmatter + body
+
+      await writeFile(filePath, pageContent)
+
+      const tree = await listDirectory(pp)
+      useWikiStore.getState().setFileTree(tree)
+      openFileInPreview(filePath, pageContent)
+      useWikiStore.getState().bumpDataVersion()
+    } catch (err) {
+      console.error("Failed to create page from lint open:", err)
+      openFileInPreview(candidates[0], `Unable to load: ${page}`)
+    }
   }
 
   async function handleFix(item: LintItem) {
@@ -140,6 +160,7 @@ export function LintView() {
               description: item.detail,
               affectedPages: [item.page],
               options: [
+                { label: t("lint.createPage"), action: "Create Page" },
                 { label: t("lint.openEdit"), action: `open:${item.page}` },
                 { label: t("lint.skip"), action: "Skip" },
               ],
@@ -165,6 +186,7 @@ export function LintView() {
               description: item.detail,
               affectedPages: [item.page],
               options: [
+                { label: t("lint.createPage"), action: "Create Page" },
                 { label: t("lint.openEdit"), action: `open:${item.page}` },
                 { label: t("lint.deletePage"), action: `delete:${pagePath}` },
                 { label: t("lint.skip"), action: "Skip" },
@@ -187,6 +209,7 @@ export function LintView() {
               description: t("lint.addCrossRefsDescription"),
               affectedPages: [item.page],
               options: [
+                { label: t("lint.createPage"), action: "Create Page" },
                 { label: t("lint.openEdit"), action: `open:${item.page}` },
                 { label: t("lint.skip"), action: "Skip" },
               ],
@@ -209,6 +232,7 @@ export function LintView() {
             description: item.detail,
             affectedPages: item.affectedPages ?? [item.page],
             options: [
+              { label: t("lint.createPage"), action: "Create Page" },
               ...openOptions,
               { label: t("lint.skip"), action: "Skip" },
             ],

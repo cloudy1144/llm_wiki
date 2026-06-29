@@ -132,8 +132,31 @@ export function ReviewView() {
           // try next
         }
       }
-      // 所有候选路径均失败时，显示错误预览（与 lint 打开行为一致）
-      useWikiStore.getState().openFileInPreview(candidates[0], `Unable to load: ${page}`)
+      // 所有候选路径均失败，文件不存在 — 自动创建模板页面供编辑
+      try {
+        const slug = normalizedPage.replace(/^wiki\//, "").replace(/\.md$/, "")
+        const title = slug.split("/").pop()!.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())
+        const filePath = normalizedPage.startsWith(pp)
+          ? `${normalizedPage}${normalizedPage.endsWith(".md") ? "" : ".md"}`
+          : candidates.find((c) => c.endsWith(".md")) ?? `${candidates[0]}.md`
+
+        const date = new Date().toISOString().slice(0, 10)
+        const frontmatter = `---\ntype: concept\ntitle: "${title.replace(/"/g, '\\"')}"\ncreated: ${date}\ntags: []\nrelated: []\n---\n\n`
+        const body = `# ${title}\n`
+        const pageContent = frontmatter + body
+
+        await writeFile(filePath, pageContent)
+
+        // 刷新文件树
+        const tree = await listDirectory(pp)
+        const { setFileTree } = useWikiStore.getState()
+        setFileTree(tree)
+        useWikiStore.getState().openFileInPreview(filePath, pageContent)
+        useWikiStore.getState().bumpDataVersion()
+      } catch (err) {
+        console.error("Failed to create page from open action:", err)
+        useWikiStore.getState().openFileInPreview(candidates[0], `Unable to load: ${page}`)
+      }
       return
     } else if (action.startsWith("delete:") && project) {
       // Delete a file
@@ -325,7 +348,9 @@ function ReviewCard({
         </button>
       </div>
 
-      <p className="mb-3 text-xs text-muted-foreground">{item.description}</p>
+      {item.description && (
+        <p className="mb-3 text-xs text-muted-foreground">{item.description}</p>
+      )}
 
       {item.affectedPages && item.affectedPages.length > 0 && (
         <div className="mb-3 text-xs text-muted-foreground">

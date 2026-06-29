@@ -14,9 +14,13 @@ import {
   messageImageToDataUrl,
 } from "@/lib/chat-image-utils"
 
+import type { ExternalSourceType } from "@/lib/external-sources"
+
 export interface ChatSendOptions {
   useWebSearch: boolean
   useAnyTxtSearch: boolean
+  /** 按需启用的免费外部信息源 */
+  externalSources: ExternalSourceType[]
 }
 
 interface ChatInputProps {
@@ -40,6 +44,9 @@ export function ChatInput({
   const [value, setValue] = useState("")
   const [useWebSearch, setUseWebSearch] = useState(false)
   const [useAnyTxtSearch, setUseAnyTxtSearch] = useState(false)
+  const [useWikipedia, setUseWikipedia] = useState(false)
+  const [useArxiv, setUseArxiv] = useState(false)
+  const [useAcademic, setUseAcademic] = useState(false)
   const [images, setImages] = useState<MessageImage[]>([])
   const [imageError, setImageError] = useState<string | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -145,7 +152,11 @@ export function ChatInput({
       setImageError(t("chat.imageInputUnavailable"))
       return
     }
-    onSend(trimmed, images, { useWebSearch, useAnyTxtSearch })
+    const externalSources: ExternalSourceType[] = []
+    if (useWikipedia) externalSources.push("wikipedia")
+    if (useArxiv) externalSources.push("arxiv")
+    if (useAcademic) externalSources.push("academic")
+    onSend(trimmed, images, { useWebSearch, useAnyTxtSearch, externalSources })
     setValue("")
     setImages([])
     setImageError(null)
@@ -290,6 +301,51 @@ export function ChatInput({
                 )}
               </Tooltip>
             </TooltipProvider>
+            <button
+              type="button"
+              aria-pressed={useWikipedia}
+              onClick={() => setUseWikipedia((v) => !v)}
+              disabled={isStreaming}
+              className={searchToggleClass(useWikipedia)}
+            >
+              <Globe2 className="h-3.5 w-3.5" />
+              Wiki
+              <span
+                className={`ml-0.5 h-1.5 w-1.5 rounded-full ${
+                  useWikipedia ? "bg-emerald-500" : "bg-muted-foreground/30"
+                }`}
+              />
+            </button>
+            <button
+              type="button"
+              aria-pressed={useArxiv}
+              onClick={() => setUseArxiv((v) => !v)}
+              disabled={isStreaming}
+              className={searchToggleClass(useArxiv)}
+            >
+              <FileSearch className="h-3.5 w-3.5" />
+              arXiv
+              <span
+                className={`ml-0.5 h-1.5 w-1.5 rounded-full ${
+                  useArxiv ? "bg-emerald-500" : "bg-muted-foreground/30"
+                }`}
+              />
+            </button>
+            <button
+              type="button"
+              aria-pressed={useAcademic}
+              onClick={() => setUseAcademic((v) => !v)}
+              disabled={isStreaming}
+              className={searchToggleClass(useAcademic)}
+            >
+              <FileSearch className="h-3.5 w-3.5" />
+              Academic
+              <span
+                className={`ml-0.5 h-1.5 w-1.5 rounded-full ${
+                  useAcademic ? "bg-emerald-500" : "bg-muted-foreground/30"
+                }`}
+              />
+            </button>
           </div>
           {isStreaming ? (
             <Button

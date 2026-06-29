@@ -1673,11 +1673,31 @@ function parseReviewBlocks(
       : undefined
 
     // Description is the body minus OPTIONS, PAGES, and SEARCH lines
-    const description = body
+    let description = body
       .replace(/^OPTIONS:.*$/m, "")
       .replace(/^PAGES:.*$/m, "")
       .replace(/^SEARCH:.*$/m, "")
       .trim()
+
+    // 兜底：LLM 未生成描述时，根据 type+title 自动补全
+    if (!description) {
+      switch (type) {
+        case "missing-page":
+          description = `缺少独立页面 "${title}"，建议创建。`
+          break
+        case "duplicate":
+          description = `检测到可能的重复页面 "${title}"，请确认。`
+          break
+        case "contradiction":
+          description = `发现内容矛盾，涉及 "${title}"，需要人工判断。`
+          break
+        case "suggestion":
+          description = `建议优化 "${title}"，可提升 Wiki 质量。`
+          break
+        default:
+          description = `需要关注 "${title}"，请确认处理方式。`
+      }
+    }
 
     items.push({
       type,
@@ -1897,7 +1917,7 @@ export function buildGenerationPrompt(
     "REVIEW block template (optional, after all FILE blocks):",
     "```",
     "---REVIEW: type | Title---",
-    "Description of what needs the user's attention.",
+    "Concise 1-2 sentence description (REQUIRED — do NOT omit). Explain the gap and why it matters.",
     "OPTIONS: Create Page | Skip",
     "PAGES: wiki/page1.md, wiki/page2.md",
     "SEARCH: query 1 | query 2 | query 3",
@@ -1959,7 +1979,7 @@ function buildReviewSuggestionPrompt(
     "REVIEW block template:",
     "```",
     "---REVIEW: suggestion | Precise title---",
-    "Concise description of the gap and why it matters.",
+    "Concise 1-2 sentence description (REQUIRED — do NOT omit). Explain the gap and why it matters.",
     "OPTIONS: Create Page | Skip",
     "PAGES: wiki/page1.md, wiki/page2.md",
     "SEARCH: query 1 | query 2 | query 3",

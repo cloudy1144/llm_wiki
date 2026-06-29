@@ -178,6 +178,7 @@
     "openEdit": "打开编辑",
     "skip": "跳过",
     "deletePage": "删除页面",
+    "createPage": "创建页面",
     "fixBrokenLink": "修复 {{page}} 中的失效链接",
     "addCrossRefs": "为 {{page}} 添加交叉引用",
     "addCrossRefsDescription": "此页面没有出站 [[wikilinks]]。建议添加与相关实体和概念的交叉引用。",

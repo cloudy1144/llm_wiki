@@ -11,6 +11,7 @@ import {
   type SearchProvider,
   type SearchProviderOverride,
 } from "@/stores/wiki-store"
+import type { ExternalSourceType } from "@/lib/external-sources"
 import { normalizeAnyTxtConfig } from "@/lib/anytxt-search"
 import {
   SEARXNG_CATEGORY_OPTIONS,
@@ -24,6 +25,13 @@ const SEARCH_PROVIDERS = [
     label: "Ollama",
     hint: "Ollama Web Search API",
     keyPlaceholder: "Enter your Ollama API key (ollama.com)",
+    needsApiKey: true,
+  },
+  {
+    id: "serper",
+    label: "Serper",
+    hint: "Google Search via Serper.dev — generous free tier",
+    keyPlaceholder: "Enter your Serper API key (serper.dev)",
     needsApiKey: true,
   },
   {
@@ -48,6 +56,12 @@ const SEARCH_PROVIDERS = [
     needsApiKey: false,
   },
 ] as const
+
+const EXTERNAL_SOURCE_OPTIONS: { value: ExternalSourceType; label: string; hint: string }[] = [
+  { value: "wikipedia", label: "Wikipedia", hint: "搜索中文维基百科文章摘要 — 免费，无需 Key" },
+  { value: "arxiv", label: "arXiv", hint: "搜索最新学术预印本 — 免费，无需 Key" },
+  { value: "academic", label: "Academic (OpenAlex)", hint: "搜索学术论文/作者/引用 — 免费，无需 Key" },
+]
 
 export function WebSearchSection() {
   const { t } = useTranslation()
@@ -86,6 +100,14 @@ export function WebSearchSection() {
 
   function updateDeepResearchSource(deepResearchSource: DeepResearchSource) {
     persist(resolveSearchConfig({ ...resolvedConfig, deepResearchSource })).catch(() => {})
+  }
+
+  function toggleExternalSource(source: ExternalSourceType) {
+    const current = resolvedConfig.deepResearchExternalSources ?? []
+    const next = current.includes(source)
+      ? current.filter((s) => s !== source)
+      : [...current, source]
+    persist(resolveSearchConfig({ ...resolvedConfig, deepResearchExternalSources: next })).catch(() => {})
   }
 
   function updateAnyTxt(patch: AnyTxtConfig) {
@@ -136,6 +158,47 @@ export function WebSearchSection() {
               {label}
             </button>
           ))}
+        </div>
+      </div>
+
+      <div className="space-y-2 rounded-lg border p-3">
+        <div>
+          <Label>免费学术信息源（深度研究时同时调用）</Label>
+          <p className="mt-1 text-xs text-muted-foreground">
+            以下信息源均为免费，无需 API Key。勾选后，点击"深入研究"时会自动并发搜索。
+          </p>
+        </div>
+        <div className="space-y-2">
+          {EXTERNAL_SOURCE_OPTIONS.map((src) => {
+            const enabled = (resolvedConfig.deepResearchExternalSources ?? []).includes(src.value)
+            return (
+              <div
+                key={src.value}
+                className="flex items-center justify-between rounded-md border px-3 py-2"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium">{src.label}</div>
+                  <div className="text-xs text-muted-foreground">{src.hint}</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => toggleExternalSource(src.value)}
+                  className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition-colors ${
+                    enabled
+                      ? "border-primary bg-primary"
+                      : "border-muted-foreground/30 bg-muted-foreground/20 hover:bg-muted-foreground/30"
+                  }`}
+                  aria-label={enabled ? `停用 ${src.label}` : `启用 ${src.label}`}
+                >
+                  <span
+                    className={`inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm ring-1 ring-black/10 transition-transform ${
+                      enabled ? "translate-x-4" : "translate-x-0.5"
+                    }`}
+                  />
+                </button>
+              </div>
+            )
+          })}
         </div>
       </div>
 

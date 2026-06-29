@@ -1,6 +1,7 @@
 import { create } from "zustand"
 import type { WikiProject, FileNode } from "@/types/wiki"
 import { DEFAULT_SOURCE_WATCH_CONFIG } from "@/lib/source-watch-config"
+import type { ExternalSourceType } from "@/lib/external-sources"
 
 /**
  * Wire protocol used when `provider === "custom"`. Other providers have a
@@ -38,7 +39,7 @@ interface LlmConfig {
   codexCliTimeoutMinutes?: number
 }
 
-export type SearchProvider = "tavily" | "serpapi" | "searxng" | "ollama" | "none"
+export type SearchProvider = "tavily" | "serpapi" | "searxng" | "ollama" | "serper" | "none"
 export type DeepResearchSource = "web" | "anytxt" | "both"
 export type SerpApiEngine =
   | "google"
@@ -92,6 +93,8 @@ interface SearchApiConfig {
   providerConfigs?: SearchProviderConfigs
   deepResearchSource?: DeepResearchSource
   anyTxt?: AnyTxtConfig
+  /** 深度研究中额外启用的免费外部信息源 */
+  deepResearchExternalSources?: ExternalSourceType[]
 }
 
 interface EmbeddingConfig {
@@ -509,7 +512,7 @@ export const useWikiStore = create<WikiState>((set) => ({
 
   scheduledImportConfig: {
     enabled: false,
-    path: "",
+    paths: [],
     interval: 60,
     lastScan: null,
   },

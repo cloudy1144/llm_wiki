@@ -18,6 +18,7 @@ import { isGreeting } from "@/lib/greeting-detector"
 import { computeContextBudget } from "@/lib/context-budget"
 import { anyTxtSearchSmart, hasConfiguredAnyTxt } from "@/lib/anytxt-search"
 import { resolveSearchConfig, webSearch, type WebSearchResult } from "@/lib/web-search"
+import { searchExternalSources } from "@/lib/external-sources"
 
 // Store the page mapping from the last query so SourceFilesBar can show which pages were cited
 export let lastQueryPages: { title: string; path: string }[] = []
@@ -180,7 +181,7 @@ export function ChatPanel() {
     async (
       text: string,
       images: MessageImage[] = [],
-      options: ChatSendOptions = { useWebSearch: false, useAnyTxtSearch: false },
+      options: ChatSendOptions = { useWebSearch: false, useAnyTxtSearch: false, externalSources: [] },
     ) => {
       // Auto-create a conversation if none is active
       let convId = useChatStore.getState().activeConversationId
@@ -256,6 +257,23 @@ export function ChatPanel() {
             anyTxtSearchSmart(text, resolvedExternalSearchConfig.anyTxt, llmConfig, 5, pp).catch((err) => {
               externalSearchErrors.push(
                 `AnyTXT: ${err instanceof Error ? err.message : String(err)}`,
+              )
+              return []
+            }),
+          )
+        }
+
+        // 免费外部信息源（Wikipedia / arXiv / Academic）
+        if (options.externalSources && options.externalSources.length > 0) {
+          externalCalls.push(
+            searchExternalSources(text, options.externalSources, 5).then(({ results, errors }) => {
+              for (const err of errors) {
+                externalSearchErrors.push(err)
+              }
+              return results
+            }).catch((err) => {
+              externalSearchErrors.push(
+                `External Sources: ${err instanceof Error ? err.message : String(err)}`,
               )
               return []
             }),

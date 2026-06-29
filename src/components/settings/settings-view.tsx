@@ -111,7 +111,7 @@ function initialDraft(
   generalConfig: ReturnType<typeof useWikiStore.getState>["generalConfig"],
   maxHistoryMessages: number,
   uiLanguage: string,
-  projectPath?: string,
+  _projectPath?: string,
   theme?: AppTheme,
   zoomLevel?: number,
 ): SettingsDraft {

@@ -122,10 +122,12 @@ export function hasConfiguredDeepResearchSources(config: SearchApiConfig): boole
   const source = resolved.deepResearchSource ?? "web"
   const webConfigured = hasConfiguredSearchProvider(resolved)
   const anyTxtConfigured = hasConfiguredAnyTxt(resolved.anyTxt)
+  
+  const externalSourcesConfigured = (resolved.deepResearchExternalSources?.length ?? 0) > 0
 
-  if (source === "web") return webConfigured
-  if (source === "anytxt") return anyTxtConfigured
-  return webConfigured || anyTxtConfigured
+  if (source === "web") return webConfigured || externalSourcesConfigured
+  if (source === "anytxt") return anyTxtConfigured || externalSourcesConfigured
+  return webConfigured || anyTxtConfigured || externalSourcesConfigured
 }
 
 export async function webSearch(
@@ -137,8 +139,8 @@ export async function webSearch(
   if (resolved.provider === "none") {
     throw new Error("Web search not configured. Select a search provider in Settings.")
   }
-  if ((resolved.provider === "tavily" || resolved.provider === "serpapi") && !resolved.apiKey) {
-    throw new Error("Web search not configured. Add a Tavily or SerpApi API key in Settings, or select a different provider.")
+  if ((resolved.provider === "tavily" || resolved.provider === "serpapi" || resolved.provider === "serper") && !resolved.apiKey) {
+    throw new Error("Web search not configured. Add a Tavily, SerpApi, or Serper API key in Settings, or select a different provider.")
   }
   if (resolved.provider === "searxng" && !resolved.searXngUrl?.trim()) {
     throw new Error("Web search not configured. Add a SearXNG instance URL in Settings.")
@@ -156,6 +158,8 @@ export async function webSearch(
       return searXngSearch(query, resolved.searXngUrl ?? "", maxResults, resolved.searXngCategories ?? ["general"])
     case "ollama":
       return ollamaSearch(query, resolved.apiKey ?? "", maxResults)
+    case "serper":
+      return serperSearch(query, resolved.apiKey, maxResults)
     default:
       throw new Error(`Unknown search provider: ${resolved.provider}`)
   }
@@ -453,3 +457,88 @@ async function ollamaSearch(
       }
     })
 }
+
+// ─── Serper (Google Search API) ────────────────────────────────────────────
+
+interface SerperSearchResult {
+  title?: string
+  link?: string
+  snippet?: string
+}
+
+async function serperSearch(
+  query: string,
+  apiKey: string,
+  maxResults: number,
+): Promise<WebSearchResult[]> {
+  const httpFetch = await getHttpFetch()
+  let response: Response
+  try {
+    response = await httpFetch("https://google.serper.dev/search", {
+      method: "POST",
+      headers: {
+        "X-API-KEY": apiKey,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        q: query,
+        num: Math.min(maxResults, 25),
+      }),
+    })
+  } catch (err) {
+    if (isFetchNetworkError(err)) {
+      throw new Error(
+        "Network error reaching google.serper.dev. Check your connectivity and whether the Serper API key is still valid.",
+      )
+    }
+    throw err
+  }
+
+  if (!response.ok) {
+    const errorText = await response.text().catch(() => "Unknown error")
+    throw new Error(`Serper search failed (${response.status}): ${errorText}`)
+  }
+
+  const data = (await response.json()) as {
+    organic?: SerperSearchResult[]
+    knowledgeGraph?: { title?: string; description?: string; link?: string }
+    answerBox?: { title?: string; snippet?: string; link?: string }
+  }
+
+  const results: WebSearchResult[] = []
+
+  // 知识图谱/答案盒优先（如果有的话）
+  const kg = data.knowledgeGraph
+  if (kg?.title) {
+    results.push({
+      title: kg.title,
+      url: kg.link ?? "",
+      snippet: kg.description ?? "",
+      source: hostnameFromUrl(kg.link ?? "") || "Google Knowledge Graph",
+    })
+  }
+
+  const ab = data.answerBox
+  if (ab?.title && ab.title !== kg?.title) {
+    results.push({
+      title: ab.title,
+      url: ab.link ?? "",
+      snippet: ab.snippet ?? "",
+      source: hostnameFromUrl(ab.link ?? "") || "Google Answer Box",
+    })
+  }
+
+  // 常规搜索结果
+  for (const r of data.organic ?? []) {
+    const url = r.link ?? ""
+    results.push({
+      title: r.title ?? "Untitled",
+      url,
+      snippet: r.snippet ?? "",
+      source: hostnameFromUrl(url),
+    })
+  }
+
+  return results.slice(0, maxResults)
+}
+
